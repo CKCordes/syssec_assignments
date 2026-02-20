@@ -5,7 +5,6 @@ import requests
 import math
 from Crypto.Util.number import long_to_bytes
 
-BASE_URL = sys.argv[1]
 
 def json_to_cookie(j: str) -> str:
     """Encode json data in a cookie-friendly way using base64."""
@@ -25,20 +24,22 @@ def factors(n):
         ([i, n//i] for i in range(1, 100) if n % i == 0)))
 
 
-def main():
+
+def main1(base_url):
     # We need to sign this message
     msg = b'You got a 12 because you are an excellent student! :)'
-    print("Message->bytes->int")
+    # print("Message->bytes->int")
     msg_num = int.from_bytes(msg)
-    print(msg_num)
+    # print(msg_num)
     factors_of_msg = factors(msg_num)
     factors_of_msg.remove(1)
     factors_of_msg.remove(msg_num)
+    # print(f"factors of our message:\n{factors_of_msg}")
 
-    print(f"factors of our message:\n{factors_of_msg}")
     # I can see 5 is a factor:
-    a = 5
-    b = msg_num // 5
+    factor = factors_of_msg.pop()
+    a = factor
+    b = msg_num // factor
 
     print(f"Valid factor: {a*b==msg_num}")
 
@@ -49,34 +50,75 @@ def main():
     # m = a*b
     # sign(m) = sign(a)*sign(b)
     # get signed a and b
-    resp_a = requests.get(f"{BASE_URL}/sign_random_document_for_students/{a_bytes.hex()}/").text
-    resp_b = requests.get(f"{BASE_URL}/sign_random_document_for_students/{b_bytes.hex()}/").text
+    resp_a = requests.get(f"{base_url}/sign_random_document_for_students/{a_bytes.hex()}/").text
+    resp_b = requests.get(f"{base_url}/sign_random_document_for_students/{b_bytes.hex()}/").text
     print(f"Response for msg a: {resp_a}")
     print(f"Response for msg b: {resp_b}")
     resp_a = json.loads(resp_a)
     resp_b = json.loads(resp_b)
 
     # I need the public key (N) for multiplying together?
-    pk = json.loads(requests.get(f"{BASE_URL}/pk/").text)
+    pk = json.loads(requests.get(f"{base_url}/pk/").text)
     N = pk["N"]
 
-
     signature = (int(resp_a["signature"], 16)-N)*(int(resp_b["signature"],16)-N) % N
-    print(f"signature:\n{hex(signature)}")
-
-    #signature = 0x43a854cb7e2af5a284976dee56f176acda500aa1593b6c7d039c01a39ce432cbb12b8a7e73cc506af319122d7bb75416df4a3befa05e65418e3b58a721291d2058d577cb11f0562318e8f21ef58238c4248e086668dfff58cac0d490657a539cf3c389162a8dc92d5f8dd2d5acf6a33c5cf837d1544ab7f54a7e14d3c3d743670f57e28d1b158f216edb11f89369b233c762dc5aa093071aac7b80b4164cb4918f79513472836f1f02fa1a1ce89d292db28d1e85fc1de23f1f42b839c42960f51d9cba6cba726b18b27912b4abc337ff53bdd314b3365707244f836322c5ac35f51dbd5d3e4a3e807d94f4b21136dc67bd9f1ff128b5dbfeafa75cd7030e6ee966125a44dbe4880bf687d81d5b2c0987e67d8989a99fda980d8e8e264ef1c69b7ae91f4077a2bd03ca6aa8b44d3060cb21091579f782c268cd06fbeb0643ae397c73a0570b81314e305899e023aa8243e0b8e7ce959d0976682c888bbb3401ecf519dbc769043f28dd77afdc210b8d0f879c82423de2b3e6fa6090e6c6841b0a
-
     c = json_to_cookie(json.dumps({'msg': msg.hex(), 'signature': long_to_bytes(signature).hex() }))
 
-    resp = requests.get(f'{BASE_URL}/quote/', cookies={'grade': c})
+    resp = requests.get(f'{base_url}/quote/', cookies={'grade': c})
     print(resp.text)
+
+
+# Procedure 2:
+# 
+
+def main2(base_url):
+    target_msg = b'You got a 12 because you are an excellent student! :)'
+    r = 2
+
+    # 1. Get the Public Key
+    pk = requests.get(f'{base_url}/pk/').json()
+    N, e = pk['N'], pk['e']
+
+    # 2. Blind the message: (m * r^e) mod N
+    m = int.from_bytes(target_msg, 'big')
+    m_blind = (m * pow(r, e, N)) % N
+
+    # 3. Request signature for the blinded "random" hex string
+    # We convert the int to hex for the URL
+    blind_hex = hex(m_blind)[2:]
+    response = requests.get(f'{base_url}/sign_random_document_for_students/{blind_hex}/').json()
+    
+    if "error" in response:
+        print(f"Error from server: {response['error']}")
+        return
+
+    s_blind = int.from_bytes(bytes.fromhex(response["signature"]), 'big')
+
+    # 4. Unblind: s = (s_blind * r^-1) mod N
+    # pow(r, -1, N) 
+    s = (s_blind * pow(r, -1, N)) % N
+
+    # 5. Craft the cookie
+    sig_bytes = s.to_bytes(math.ceil(N.bit_length() / 8), 'big')
+    cookie_data = json.dumps({
+        'msg': target_msg.hex(),
+        'signature': sig_bytes.hex()
+    })
+    
+    grade_cookie = json_to_cookie(cookie_data)
+
+    # 6. Claim your prize!
+    final_resp = requests.get(f'{base_url}/quote/', cookies={'grade': grade_cookie})
+    print(final_resp.text)
+
+
 
 if __name__ == '__main__':
     if len(sys.argv) != 2:
         print(f'usage: {sys.argv[0]} <base url>', file=sys.stderr)
         exit(1)
-    main()
-
+    main1(sys.argv[1])
+    main2(sys.argv[1])
 
 # m = a*b
 # sign(m) = sign(a)*sign(b)
