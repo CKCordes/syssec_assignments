@@ -8,7 +8,6 @@ from secret_data import encryption_key, secret
 app = Flask(__name__)
 quotes = open('quotes.txt', 'r').readlines()
 
-
 def encrypt(message: bytes) -> bytes:
     """Encrypt a message using our encryption key."""
     # generate a random IV
