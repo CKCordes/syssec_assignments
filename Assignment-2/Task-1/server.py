@@ -23,6 +23,7 @@ def decrypt(encrypted_data):
 
 if __name__ == "__main__":
     icmp_socket = socket.socket(socket.AF_INET, socket.SOCK_RAW, socket.IPPROTO_ICMP)
+    print("Listening for ICMP messages...")
     # Receive the ICMP reply
     while True:
         try:
