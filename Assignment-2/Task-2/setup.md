@@ -2,28 +2,48 @@
 
 This guide outlines the procedure for setting up an experimental environment where the host machine acts as a router for a Virtual Machine (VM). This topology ensures the attacker script (running on the host) can intercept and inject forged TCP packets before legitimate packets arrive, winning the necessary race condition.
 
-## Phase 1: Virtual Machine Network Configuration
+## Phase 1: Docker Container Configuration
 
-To sniff and manipulate the VM's traffic natively from the host, the VM must route its traffic through the host's virtual network adapter.
+To sniff and manipulate the victim's traffic natively from the host, we will use a Docker container. By default, Docker attaches containers to a bridge network, which automatically routes the container's traffic through a virtual interface on the host machine.
 
-1. **Configure the VM Network:** In your hypervisor (e.g., VirtualBox, VMware), open the VM settings and set the network adapter to **NAT** (or "NAT Network").
-2. **Boot the VM:** Start your guest operating system (e.g., Ubuntu, Debian).
-3. **Verify Connectivity:** Open a terminal inside the VM and ping an external server (e.g., `ping 8.8.8.8`) to confirm internet access is actively routing through the host.
+1. **Start the Container (First Time):** Open a terminal on your host and run a new interactive Ubuntu container. We will name it `tcp_victim` for easy reference:
+```bash
+docker run -it --name tcp_victim ubuntu /bin/bash
+```
 
-## Phase 2: Identifying IPs and Interfaces
+(Note: For subsequent runs after you have exited the container, do not use the run command again. Instead, start and attach to the existing container using:
+ `docker start -ai tcp_victim`
 
-To configure the Scapy script and capture filters, you must identify the IP addresses of the communication endpoints and the virtual interface handling the traffic.
+2. Install Networking Tools: Base Docker images are highly stripped down. Inside the container's shell, update the package manager and install the tools needed for the experiment:
 
-1. **Find the VM's IP (`dest_ip`):**
-   * Inside the VM, run `ip addr` (Linux) or `ifconfig`.
-   * *Example Output:* `10.0.2.15` or `192.168.122.51`.
-2. **Find the Target Server IP (`source_ip`):**
-   * Decide on a target file to download (e.g., an Ubuntu ISO).
-   * On the host or VM, run: `ping releases.ubuntu.com`
-   * Note the resolved IP address.
+```Bash
+apt update && apt install wget iproute2 iputils-ping -y
+   ```
+
+3. Verify Connectivity: Inside the container, ping an external server to confirm its internet access is actively routing through the host's Docker bridge:
+
+```Bash
+ping 8.8.8.8
+```
+# Phase 2: Identifying IPs and Interfaces
+Phase 2: Identifying IPs and Interfaces
+
+To configure the Scapy script and Wireshark capture filters, you must identify the IP addresses of the communication endpoints and the specific Docker interface handling the traffic.
+
+1. **Find the Container's IP (dest_ip):**
+- Inside the container, run ip addr.
+- Look for the eth0 interface and note the inet IP address.
+- Example Output: 172.17.0.2.
+
+2. **Find the Target Server IP (source_ip):**
+- Decide on a target file to download (e.g., an Ubuntu ISO).
+- Inside the container or on the host, run: ping releases.ubuntu.com
+- Note the resolved IP address.
+
 3. **Find the Host's Virtual Interface:**
-   * On the **host machine**, list network interfaces using `ip link` (Linux/macOS) or `ipconfig` (Windows).
-   * Identify the interface tied to the hypervisor (e.g., `vboxnet0`, `vmnet8`, `virbr0`, or `utun`).
+- On the host machine (outside the container), list network interfaces using ip link or ifconfig.
+- Identify the Docker bridge interface. Unless you have configured custom Docker networks, this is almost always named docker0.
+- Would you like me to map out those Wireshark display filters next so you know exactly how to isolate your forged packets for your report screenshots?
 
 ## Phase 3: Script Adaptation (The Interface Tweak)
 
@@ -77,6 +97,7 @@ To test the Connection Kill (RST Injection):
 ```Bash
 sudo python3 throttle_script.py <Server_IP> <VM_IP> kill
 ```
+
 (Expected Result: The wget download should immediately terminate with a "Connection reset by peer" or similar error).
 
 
