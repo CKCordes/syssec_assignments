@@ -2,6 +2,9 @@
 
 This guide outlines the procedure for setting up an experimental environment where the host machine acts as a router for a Virtual Machine (VM). This topology ensures the attacker script (running on the host) can intercept and inject forged TCP packets before legitimate packets arrive, winning the necessary race condition.
 
+SourceIP: 91.189.91.108
+DestinationIP: 172.17.0.2 (VM's IP)
+
 ## Phase 1: Docker Container Configuration
 
 To sniff and manipulate the victim's traffic natively from the host, we will use a Docker container. By default, Docker attaches containers to a bridge network, which automatically routes the container's traffic through a virtual interface on the host machine.
@@ -31,7 +34,7 @@ Phase 2: Identifying IPs and Interfaces
 To configure the Scapy script and Wireshark capture filters, you must identify the IP addresses of the communication endpoints and the specific Docker interface handling the traffic.
 
 1. **Find the Container's IP (dest_ip):**
-- Inside the container, run ip addr.
+- Inside the container, run `ip addr`.
 - Look for the eth0 interface and note the inet IP address.
 - Example Output: 172.17.0.2.
 
@@ -52,8 +55,8 @@ By default, Scapy's `sniff()` function listens on the host's primary network int
 Update the `sniff()` functions in your Python script to include the `iface` parameter:
 
 ```python
-# Define your virtual interface (replace 'vmnet8' with your actual interface)
-INTERFACE = "vmnet8" 
+# Define your virtual interface (replace 'docker0' with your actual interface)
+INTERFACE = "docker0" 
 
 # Update inside throttle_transmission:
 sniff(iface=INTERFACE, filter=f"tcp and src host {dest_ip} and dst host {source_ip}", prn=prn_throttle)

